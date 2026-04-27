@@ -161,8 +161,9 @@ function StreamMap({ sightings, onSelect, selected, landmarks, streamName }) {
   )
 }
 
-function SightingCard({ sighting, onLike, isAdmin, onDelete }) {
+function SightingCard({ sighting, onLike, isAdmin, onDelete, onMove }) {
   const [liked, setLiked] = useState(false)
+  const [showPhoto, setShowPhoto] = useState(false)
   const lm = ALL_LANDMARKS.find((l) => l.id === sighting.landmark_id) || { name: sighting.landmark_name || '알 수 없음', icon: '📍' }
 
   useEffect(() => {
@@ -205,7 +206,7 @@ function SightingCard({ sighting, onLike, isAdmin, onDelete }) {
       </div>
       <p style={{ margin: '10px 0', fontSize: 14, lineHeight: 1.6, color: '#2d3436', fontFamily: "'Noto Sans KR',sans-serif" }}>{sighting.comment}</p>
       {sighting.photo_url ? (
-        <img src={sighting.photo_url} alt="오리 사진" style={{ width: '100%', height: 180, objectFit: 'cover', borderRadius: 12, marginBottom: 8 }} onError={(e) => (e.target.style.display = 'none')} />
+        <img src={sighting.photo_url} alt="오리 사진" onClick={() => setShowPhoto(true)} style={{ width: '100%', height: 180, objectFit: 'cover', borderRadius: 12, marginBottom: 8, cursor: 'pointer' }} onError={(e) => (e.target.style.display = 'none')} />
       ) : (
         <div style={{ width: '100%', height: 120, borderRadius: 12, background: 'linear-gradient(135deg,#e8f4e8,#d4ecf7 50%,#fff9e6)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8, gap: 4, fontSize: 28, opacity: 0.6 }}>
           {[...Array(Math.min(sighting.duck_count, 7))].map((_, i) => (
@@ -213,14 +214,28 @@ function SightingCard({ sighting, onLike, isAdmin, onDelete }) {
           ))}
         </div>
       )}
+      {showPhoto && sighting.photo_url && (
+        <div onClick={() => setShowPhoto(false)} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, cursor: 'pointer' }}>
+          <button onClick={() => setShowPhoto(false)} style={{ position: 'absolute', top: 16, right: 16, background: 'none', border: 'none', fontSize: 28, color: '#fff', cursor: 'pointer', zIndex: 2001 }}>✕</button>
+          <img src={sighting.photo_url} alt="오리 사진" style={{ maxWidth: '95%', maxHeight: '90vh', objectFit: 'contain', borderRadius: 8 }} />
+        </div>
+      )}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
         {isAdmin && (
-          <button
-            onClick={() => onDelete(sighting.id)}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', borderRadius: 8, fontSize: 12, color: '#d63031' }}
-          >
-            🗑️ <span style={{ fontFamily: "'Noto Sans KR',sans-serif" }}>삭제</span>
-          </button>
+          <>
+            <button
+              onClick={() => onMove(sighting)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', borderRadius: 8, fontSize: 12, color: '#0984e3' }}
+            >
+              🔄 <span style={{ fontFamily: "'Noto Sans KR',sans-serif" }}>이동</span>
+            </button>
+            <button
+              onClick={() => onDelete(sighting.id)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', borderRadius: 8, fontSize: 12, color: '#d63031' }}
+            >
+              🗑️ <span style={{ fontFamily: "'Noto Sans KR',sans-serif" }}>삭제</span>
+            </button>
+          </>
         )}
         <button
           onClick={handleLikeClick}
@@ -341,6 +356,7 @@ export default function Home() {
   const [showAdminLogin, setShowAdminLogin] = useState(false)
   const [adminPw, setAdminPw] = useState('')
   const [stream, setStream] = useState('cheonggyecheon')
+  const [movingSighting, setMovingSighting] = useState(null)
 
   const currentStream = STREAMS[stream]
   const currentLandmarkIds = currentStream.landmarks.map((l) => l.id)
@@ -415,6 +431,15 @@ export default function Home() {
     const { error } = await supabase.from('sightings').delete().eq('id', id)
     if (error) { console.error('삭제 실패:', error); showToast('삭제 실패 😢') }
     else { showToast('제보가 삭제되었어요'); loadSightings() }
+  }
+
+  async function handleMoveTo(landmarkId) {
+    const lm = ALL_LANDMARKS.find((l) => l.id === landmarkId)
+    if (!lm || !movingSighting) return
+    const { error } = await supabase.from('sightings').update({ landmark_id: landmarkId, landmark_name: lm.name }).eq('id', movingSighting.id).select()
+    if (error) { console.error('이동 실패:', error); showToast('이동 실패 😢') }
+    else { showToast(`${lm.name}(으)로 이동했어요`); loadSightings() }
+    setMovingSighting(null)
   }
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(null), 3000) }
@@ -509,7 +534,7 @@ export default function Home() {
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {filteredSightings.map((s) => (<SightingCard key={s.id} sighting={s} onLike={handleLike} isAdmin={isAdmin} onDelete={handleDelete} />))}
+                {filteredSightings.map((s) => (<SightingCard key={s.id} sighting={s} onLike={handleLike} isAdmin={isAdmin} onDelete={handleDelete} onMove={setMovingSighting} />))}
               </div>
             )}
           </>
@@ -519,6 +544,38 @@ export default function Home() {
       <button onClick={() => setShowForm(true)} style={{ position: 'fixed', bottom: 24, right: 24, width: 60, height: 60, borderRadius: '50%', border: 'none', background: 'linear-gradient(135deg,#2d6a4f,#40916c)', color: '#fff', fontSize: 28, cursor: 'pointer', boxShadow: '0 4px 20px rgba(45,106,79,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>📍</button>
 
       {showForm && <ReportForm selectedLandmark={selectedLandmark} onSubmit={handleSubmit} onClose={() => { setShowForm(false); setSelectedLandmark(null) }} landmarks={currentStream.landmarks} />}
+
+      {/* 이동 모달 */}
+      {movingSighting && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(27,67,50,.5)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 1000 }} onClick={(e) => e.target === e.currentTarget && setMovingSighting(null)}>
+          <div style={{ background: '#fff', borderRadius: '24px 24px 0 0', padding: '24px 20px 32px', width: '100%', maxWidth: 480, maxHeight: '70vh', overflow: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#1b4332', fontFamily: "'Noto Sans KR',sans-serif" }}>🔄 제보 이동</h3>
+              <button onClick={() => setMovingSighting(null)} style={{ background: 'none', border: 'none', fontSize: 24, color: '#b2bec3', cursor: 'pointer' }}>✕</button>
+            </div>
+            <p style={{ fontSize: 13, color: '#6b9080', marginBottom: 16, fontFamily: "'Noto Sans KR',sans-serif" }}>어디로 이동할까요?</p>
+            {Object.values(STREAMS).map((s) => (
+              <div key={s.id} style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: '#1b4332', marginBottom: 8, fontFamily: "'Noto Sans KR',sans-serif" }}>{s.emoji} {s.name}</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {s.landmarks.map((lm) => (
+                    <button key={lm.id} onClick={() => handleMoveTo(lm.id)} style={{
+                      padding: '6px 12px', borderRadius: 20, fontSize: 12, cursor: 'pointer',
+                      border: movingSighting.landmark_id === lm.id ? '2px solid #2d6a4f' : '1px solid #ddd',
+                      background: movingSighting.landmark_id === lm.id ? '#e8f4e8' : '#fff',
+                      fontWeight: movingSighting.landmark_id === lm.id ? 700 : 500,
+                      color: movingSighting.landmark_id === lm.id ? '#1b4332' : '#636e72',
+                      fontFamily: "'Noto Sans KR',sans-serif",
+                    }}>
+                      {lm.icon} {lm.name.split(' (')[0]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* 관리자 로그인 모달 */}
       {showAdminLogin && (
